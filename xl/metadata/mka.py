@@ -43,11 +43,11 @@ class MkaFormat(_base.BaseFormat):
         'comment': ('COMMENT', 30),
         'composer': ('COMPOSER', 30),
         'date': ('DATE_RECORDED', 50),
-        'disc': ('PART_NUMBER', 50),
+        'discnumber': ('PART_NUMBER', 50),
         'genre': ('GENRE', 30),
         'performer': ('PERFORMER', 30),
         'title': ('TITLE', 30),
-        'track': ('PART_NUMBER', 30),
+        'tracknumber': ('PART_NUMBER', 30),
     }
 
     def _get_raw(self):
@@ -57,7 +57,11 @@ class MkaFormat(_base.BaseFormat):
         mka = _matroska.parse(self.loc)
         segment = mka['Segment'][0]
         info = segment['Info'][0]
-        length = info['Duration'][0] * info['TimecodeScale'][0] / 1e9
+        try:
+            timecodescale = info['TimecodeScale'][0]
+        except KeyError:
+            timecodescale = 1000000
+        length = info['Duration'][0] * timecodescale / 1e9
         self.tags = tags = {'__length': length}
         for mkatags in segment['Tags']:
             for mkatag in mkatags['Tag']:

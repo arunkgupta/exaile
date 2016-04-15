@@ -31,9 +31,9 @@ preparation of data for display in various contexts.
 """
 
 from datetime import date
-import gio
-import glib
-import gobject
+from gi.repository import Gio
+from gi.repository import GLib
+from gi.repository import GObject
 import re
 from string import Template, _TemplateMetaclass
 
@@ -156,7 +156,7 @@ class ParameterTemplate(Template):
 
         return self.pattern.sub(convert, self.template)
 
-class Formatter(gobject.GObject):
+class Formatter(GObject.GObject):
     """
         A generic text formatter based on a format string
 
@@ -172,11 +172,11 @@ class Formatter(gobject.GObject):
     """
     __gproperties__ = {
         'format': (
-            gobject.TYPE_STRING,
+            GObject.TYPE_STRING,
             'format string',
             'String the formatting is based on',
             '',
-            gobject.PARAM_READWRITE
+            GObject.PARAM_READWRITE
         )
     }
     def __init__(self, format):
@@ -185,7 +185,7 @@ class Formatter(gobject.GObject):
                 of :class:`string.Template` for details
             :type format: string
         """
-        gobject.GObject.__init__(self)
+        GObject.GObject.__init__(self)
 
         self._template = ParameterTemplate(format)
         self._substitutions = {}
@@ -404,7 +404,7 @@ class TrackFormatter(Formatter):
                 substitute = provider.format(track, parameters)
 
             if markup_escape:
-                substitute = glib.markup_escape_text(substitute)
+                substitute = GLib.markup_escape_text(substitute).decode('utf-8')
 
             self._substitutions[identifier] = substitute
 
@@ -663,6 +663,25 @@ class RatingTagFormatter(TagFormatter):
         return ('%s%s' % (filled, empty)).decode('utf-8')
 providers.register('tag-formatting', RatingTagFormatter())
 
+class YearTagFormatter(TagFormatter):
+    """
+        A pseudo-tag that computes the year from the date column 
+    """
+    def __init__(self):
+        TagFormatter.__init__(self, 'year')
+        
+    def format(self, track, parameters):
+        value = track.get_tag_raw('date')
+        if value is not None:
+            try:
+                return value[0].split('-')[0]
+            except:
+                pass
+            return value[0]
+            
+        return _("Unknown")
+providers.register('tag-formatting', YearTagFormatter())
+
 class DateTagFormatter(TagFormatter):
     """
         A generic formatter for timestamp formatting
@@ -694,7 +713,7 @@ class DateTagFormatter(TagFormatter):
 
         try:
             last_played = date.fromtimestamp(value)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             text = _('Never')
         else:
             today = date.today()

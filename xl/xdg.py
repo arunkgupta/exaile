@@ -25,7 +25,7 @@
 # from your version.
 
 import os, sys
-import glib
+from gi.repository import GLib
 
 # We need the local hack for OSX bundled apps, so we depend on the main script
 # to set the environment variable correctly instead of trying to infer an
@@ -36,14 +36,19 @@ exaile_dir = os.environ['EXAILE_DIR']
 homedir = os.path.expanduser("~")
 lastdir = homedir
 
-data_home = glib.get_user_data_dir()
+data_home = GLib.get_user_data_dir()
 data_home = os.path.join(data_home, "exaile")
 
-config_home = glib.get_user_config_dir()
+config_home = GLib.get_user_config_dir()
 config_home = os.path.join(config_home, "exaile")
 
-cache_home = glib.get_user_cache_dir()
+cache_home = GLib.get_user_cache_dir()
 cache_home = os.path.join(cache_home, "exaile")
+
+if sys.platform == 'win32':
+    logs_home = os.path.join(data_home, "logs")
+else:
+    logs_home = os.path.join(cache_home, "logs")
 
 data_dirs = os.getenv("XDG_DATA_DIRS")
 if data_dirs is None:
@@ -59,7 +64,7 @@ if config_dirs is None:
     if sys.platform == 'win32':
         config_dirs = [exaile_dir]
     else:
-        config_dirs = ["/etc/xdg/exaile"]
+        config_dirs = ["/usr/local/etc/xdg/exaile", "/etc/xdg/exaile"]
 else:
     config_dirs = [os.path.join(d, "exaile") for d in config_dirs.split(os.pathsep)]
 
@@ -91,6 +96,9 @@ def get_data_dirs():
 
 def get_cache_dir():
     return cache_home
+
+def get_logs_dir():
+    return logs_home
 
 
 def _get_path(basedirs, *subpath_elements, **kwargs):
@@ -133,6 +141,7 @@ def _make_missing_dirs():
         os.makedirs(config_home)
     if not os.path.exists(cache_home):
         os.makedirs(cache_home)
+    if not os.path.exists(logs_home):
+        os.makedirs(logs_home)
 
 # vim: et sts=4 sw=4
-

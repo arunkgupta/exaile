@@ -24,9 +24,11 @@
 # do so. If you do not wish to do so, delete this exception statement
 # from your version.
 
-import glib
-import gobject
-import gtk
+from gi.repository import Gdk
+from gi.repository import GdkPixbuf
+from gi.repository import GLib
+from gi.repository import GObject
+from gi.repository import Gtk
 import itertools
 import logging
 
@@ -76,7 +78,7 @@ class Order(object):
         format string for xl.formatter, and the third a tuple of tags to use
         for searching.
 
-        When passed in the paramters, a level can also be a single string
+        When passed in the parameters, a level can also be a single string
         instead of a tuple, and it will be treated equivalently to (("foo",),
         "$foo", ("foo",)) for some string "foo".
     """
@@ -108,7 +110,7 @@ class Order(object):
         return len(self.__levels)
 
     def __eq__(self, other):
-        self.__levels == other.get_levels()
+        return self.__levels == other.get_levels()
 
     def all_sort_tags(self):
         return list(itertools.chain(*[l[0] for l in self.__levels]))
@@ -126,39 +128,39 @@ class Order(object):
         return self.__formatters[level].format(track)
 
 DEFAULT_ORDERS = [
-    (_("Artist"), 
+    Order(_("Artist"),
         ("artist", "album", 
             (("discnumber", "tracknumber", "title"), "$title", ("title",)))),
-    (_("Album"), 
+    Order(_("Album"),
         ("album", 
             (("discnumber", "tracknumber", "title"), "$title", ("title",)))),
-    (_("Genre - Artist"), 
+    Order(_("Genre - Artist"),
         ('genre', 'artist', 'album', 
             (("discnumber", "tracknumber", "title"), "$title", ("title",)))),
-    (_("Genre - Album"), 
+    Order(_("Genre - Album"),
         ('genre', 'album', 'artist', 
             (("discnumber", "tracknumber", "title"), "$title", ("title",)))),
-    (_("Date - Artist"), 
+    Order(_("Date - Artist"),
         ('date', 'artist', 'album', 
             (("discnumber", "tracknumber", "title"), "$title", ("title",)))),
-    (_("Date - Album"), 
+    Order(_("Date - Album"),
         ('date', 'album', 'artist', 
             (("discnumber", "tracknumber", "title"), "$title", ("title",)))),
-    (_("Artist - (Date - Album)"), 
+    Order(_("Artist - (Date - Album)"),
         ('artist', 
             (('date', 'album'), "$date - $album", ('date', 'album')), 
             (("discnumber", "tracknumber", "title"), "$title", ("title",)))),
-        ]
+]
 
 class CollectionPanel(panel.Panel):
     """
         The collection panel
     """
     __gsignals__ = {
-        'append-items': (gobject.SIGNAL_RUN_LAST, None, (object, bool)),
-        'replace-items': (gobject.SIGNAL_RUN_LAST, None, (object,)),
-        'queue-items': (gobject.SIGNAL_RUN_LAST, None, (object,)),
-        'collection-tree-loaded': (gobject.SIGNAL_RUN_LAST, None, ()),
+        'append-items': (GObject.SignalFlags.RUN_LAST, None, (object, bool)),
+        'replace-items': (GObject.SignalFlags.RUN_LAST, None, (object,)),
+        'queue-items': (GObject.SignalFlags.RUN_LAST, None, (object,)),
+        'collection-tree-loaded': (GObject.SignalFlags.RUN_LAST, None, ()),
     }
 
     ui_info = ('collection.ui', 'CollectionPanelWindow')
@@ -184,7 +186,7 @@ class CollectionPanel(panel.Panel):
         self._refresh_id = 0
         self.start_count = 0
         self.keyword = ''
-        self.orders = map(lambda x: Order(x[0], x[1]), DEFAULT_ORDERS)
+        self.orders = DEFAULT_ORDERS[:]
         self._setup_tree()
         self._setup_widgets()
         self._check_collection_empty()
@@ -194,7 +196,7 @@ class CollectionPanel(panel.Panel):
         self.tracks = []
         self.sorted_tracks = []
 
-        event.add_callback(self._check_collection_empty, 'libraries_modified',
+        event.add_ui_callback(self._check_collection_empty, 'libraries_modified',
             collection)
 
         self.menu = menus.CollectionContextMenu(self)
@@ -227,19 +229,19 @@ class CollectionPanel(panel.Panel):
         if not self._show_collection_empty_message or \
             (self.collection.libraries and self.collection_empty_message):
             self.collection_empty_message = False
-            glib.idle_add(self.vbox.set_child_visible, True)
-            glib.idle_add(self.message.set_child_visible, False)
-            glib.idle_add(self.vbox.show_all)
-            glib.idle_add(self.message.hide_all)
+            self.vbox.set_child_visible(True)
+            self.message.set_child_visible(False)
+            self.vbox.show_all()
+            self.message.hide()
 
         elif not self.collection.libraries and not \
             self.collection_empty_message:
             self.collection_empty_message = True
-            glib.idle_add(self.vbox.set_child_visible, False)
-            glib.idle_add(self.message.set_no_show_all, False)
-            glib.idle_add(self.message.set_child_visible, True)
-            glib.idle_add(self.vbox.hide_all)
-            glib.idle_add(self.message.show_all)
+            self.vbox.set_child_visible(False)
+            self.message.set_no_show_all(False)
+            self.message.set_child_visible(True)
+            self.vbox.hide()
+            self.message.show_all()
 
     def _connect_events(self):
         """
@@ -255,10 +257,10 @@ class CollectionPanel(panel.Panel):
             'on_add_music_button_clicked': self.on_add_music_button_clicked
         })
         self.tree.connect('key-release-event', self.on_key_released)
-        event.add_callback(self.refresh_tags_in_tree, 'track_tags_changed')
-        event.add_callback(self.refresh_tracks_in_tree, 
+        event.add_ui_callback(self.refresh_tags_in_tree, 'track_tags_changed')
+        event.add_ui_callback(self.refresh_tracks_in_tree, 
             'tracks_added', self.collection)
-        event.add_callback(self.refresh_tracks_in_tree, 
+        event.add_ui_callback(self.refresh_tracks_in_tree, 
             'tracks_removed', self.collection)
 
     def on_refresh_button_press_event(self, button, event):
@@ -269,11 +271,11 @@ class CollectionPanel(panel.Panel):
             menu = guiutil.Menu()
             menu.append(_('Rescan Collection'),
                 xlgui.get_controller().on_rescan_collection,
-                gtk.STOCK_REFRESH)
-            menu.popup(None, None, None, event.button, event.time)
+                Gtk.STOCK_REFRESH)
+            menu.popup(None, None, None, None, event.button, event.time)
             return
 
-        if event.state & gtk.gdk.SHIFT_MASK:
+        if event.get_state() & Gdk.ModifierType.SHIFT_MASK:
             xlgui.get_controller().on_rescan_collection(None)
         else:
             self.load_tree()
@@ -282,9 +284,9 @@ class CollectionPanel(panel.Panel):
         """
             Called on key presses on the refresh button
         """
-        if event.keyval != gtk.keysyms.Return: return False
+        if event.keyval != Gdk.KEY_Return: return False
 
-        if event.state & gtk.gdk.SHIFT_MASK:
+        if event.get_state() & Gdk.ModifierType.SHIFT_MASK:
             xlgui.get_controller().on_rescan_collection(None)
         else:
             self.load_tree()
@@ -293,23 +295,23 @@ class CollectionPanel(panel.Panel):
         """
             Called when a key is released in the tree
         """
-        if event.keyval == gtk.keysyms.Menu:
-            gtk.Menu.popup(self.menu, None, None, None, 0, event.time)
+        if event.keyval == Gdk.KEY_Menu:
+            Gtk.Menu.popup(self.menu, None, None, None, None, 0, event.time)
             return True
 
-        if event.keyval == gtk.keysyms.Left:
+        if event.keyval == Gdk.KEY_Left:
             (mods,paths) = self.tree.get_selection().get_selected_rows()
             for path in paths:
                 self.tree.collapse_row(path)
             return True
 
-        if event.keyval == gtk.keysyms.Right:
+        if event.keyval == Gdk.KEY_Right:
             (mods,paths) = self.tree.get_selection().get_selected_rows()
             for path in paths:
                 self.tree.expand_row(path, False)
             return True
 
-        if event.keyval == gtk.keysyms.Return:
+        if event.keyval == Gdk.KEY_Return:
             self.append_to_playlist()
             return True
         return False
@@ -330,15 +332,15 @@ class CollectionPanel(panel.Panel):
             Sets up the various images that will be used in the tree
         """
         self.artist_image = icons.MANAGER.pixbuf_from_icon_name(
-            'artist', gtk.ICON_SIZE_SMALL_TOOLBAR)
+            'artist', Gtk.IconSize.SMALL_TOOLBAR)
         self.date_image = icons.MANAGER.pixbuf_from_icon_name(
-            'office-calendar', gtk.ICON_SIZE_SMALL_TOOLBAR)
-        self.album_image = icons.MANAGER.pixbuf_from_stock(
-            gtk.STOCK_CDROM, gtk.ICON_SIZE_SMALL_TOOLBAR)
+            'office-calendar', Gtk.IconSize.SMALL_TOOLBAR)
+        self.album_image = icons.MANAGER.pixbuf_from_icon_name(
+            'image-x-generic', Gtk.IconSize.SMALL_TOOLBAR)
         self.title_image = icons.MANAGER.pixbuf_from_icon_name(
-            'audio-x-generic', gtk.ICON_SIZE_SMALL_TOOLBAR)
+            'audio-x-generic', Gtk.IconSize.SMALL_TOOLBAR)
         self.genre_image = icons.MANAGER.pixbuf_from_icon_name(
-            'genre', gtk.ICON_SIZE_SMALL_TOOLBAR)
+            'genre', Gtk.IconSize.SMALL_TOOLBAR)
 
     def drag_data_received(self, *e):
         """
@@ -371,18 +373,18 @@ class CollectionPanel(panel.Panel):
         self.tree = CollectionDragTreeView(self)
         self.tree.set_headers_visible(False)
         container = self.builder.get_object('CollectionPanel')
-        scroll = gtk.ScrolledWindow()
-        scroll.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         scroll.add(self.tree)
-        scroll.set_shadow_type(gtk.SHADOW_IN)
-        container.pack_start(scroll, True, True)
+        scroll.set_shadow_type(Gtk.ShadowType.IN)
+        container.pack_start(scroll, True, True, 0)
         container.show_all()
 
         selection = self.tree.get_selection()
-        selection.set_mode(gtk.SELECTION_MULTIPLE)
-        pb = gtk.CellRendererPixbuf()
-        cell = gtk.CellRendererText()
-        col = gtk.TreeViewColumn('Text')
+        selection.set_mode(Gtk.SelectionMode.MULTIPLE)
+        pb = Gtk.CellRendererPixbuf()
+        cell = Gtk.CellRendererText()
+        col = Gtk.TreeViewColumn('Text')
         col.pack_start(pb, False)
         col.pack_start(cell, True)
         col.set_attributes(pb, pixbuf=0)
@@ -390,14 +392,14 @@ class CollectionPanel(panel.Panel):
         self.tree.append_column(col)
 
         if settings.get_option('gui/ellipsize_text_in_panels', False):
-            import pango
+            from gi.repository import Pango
             cell.set_property('ellipsize-set', True)
-            cell.set_property('ellipsize', pango.ELLIPSIZE_END)
+            cell.set_property('ellipsize', Pango.EllipsizeMode.END)
 
         self.tree.set_row_separator_func(
-            lambda m, i: m.get_value(i, 1) is None)
+            (lambda m, i, d: m.get_value(i, 1) is None), None)
 
-        self.model = gtk.TreeStore(gtk.gdk.Pixbuf, str, object)
+        self.model = Gtk.TreeStore(GdkPixbuf.Pixbuf, str, object)
 
         self.tree.connect("row-expanded", self.on_expanded)
 
@@ -427,7 +429,7 @@ class CollectionPanel(panel.Panel):
         selection = self.tree.get_selection()
         (x, y) = map(int, event.get_coords())
         path = self.tree.get_path_at_pos(x, y)
-        if event.type == gtk.gdk._2BUTTON_PRESS:
+        if event.type == Gdk.EventType._2BUTTON_PRESS:
             replace = settings.get_option('playlist/replace_content', False)
             self.append_to_playlist(replace=replace)
             return False
@@ -448,7 +450,7 @@ class CollectionPanel(panel.Panel):
                 return False
             (mods,paths) = selection.get_selected_rows()
             if (path[0] in paths):
-                if event.state & (gtk.gdk.SHIFT_MASK|gtk.gdk.CONTROL_MASK):
+                if event.get_state() & (Gdk.ModifierType.SHIFT_MASK|Gdk.ModifierType.CONTROL_MASK):
                     return False
                 return True
             else:
@@ -484,7 +486,7 @@ class CollectionPanel(panel.Panel):
             self._refresh_tags_in_tree()
 
     def refresh_tracks_in_tree(self, type, obj, loc):
-        glib.idle_add(self._refresh_tags_in_tree)
+        self._refresh_tags_in_tree()
 
     @common.glib_wait(500)
     def _refresh_tags_in_tree(self):
@@ -509,7 +511,7 @@ class CollectionPanel(panel.Panel):
 
     def load_tree(self):
         """
-            Loads the gtk.TreeView for this collection panel.
+            Loads the Gtk.TreeView for this collection panel.
 
             Loads tracks based on the current keyword, or all the tracks in
             the collection associated with this panel
@@ -574,7 +576,7 @@ class CollectionPanel(panel.Panel):
 
         if rest:
             item = rest.pop(0)
-            glib.idle_add(self._expand_node_by_name, search_num,
+            GLib.idle_add(self._expand_node_by_name, search_num,
                 parent, item, rest)
 
     def load_subtree(self, parent):
@@ -686,7 +688,7 @@ class CollectionPanel(panel.Panel):
                         if depth > 0:
                             # for some reason, nested iters are always
                             # off by one in the terminal entry.
-                            newpath = newpath[:-1] + (newpath[-1]-1,)
+                            newpath = Gtk.TreePath.new_from_indices(newpath[:-1] + [newpath[-1]-1])
                         to_expand.append(newpath)
                         expanded = True
 
@@ -703,7 +705,7 @@ class CollectionPanel(panel.Panel):
             len(self.keyword.strip()) >= \
                     settings.get_option("gui/expand_minimum_term_length", 2):
             for row in to_expand:
-                glib.idle_add(self.tree.expand_row, row, False)
+                GLib.idle_add(self.tree.expand_row, row, False)
 
         if iter_sep is not None:
             self.model.remove(iter_sep)
@@ -736,6 +738,9 @@ class CollectionDragTreeView(DragTreeView):
         """
         model, paths = self.get_selection().get_selected_rows()
         tracks = []
+        
+        if len(paths) == 0:
+            return tracks
 
         for path in paths:
             iter = model.get_iter(path)
@@ -754,7 +759,11 @@ class CollectionDragTreeView(DragTreeView):
         if not widget.get_tooltip_context(x, y, keyboard_mode):
             return False
 
-        path = widget.get_path_at_pos(x, y)[0]
+        result = widget.get_path_at_pos(x, y)
+        if not result:
+            return False
+        
+        path = result[0]
 
         model = widget.get_model()
         tooltip.set_text(model[path][1]) # 1: title

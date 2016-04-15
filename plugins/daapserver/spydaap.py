@@ -13,6 +13,7 @@
 #You should have received a copy of the GNU General Public License
 #along with Spydaap. If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import print_function
 import BaseHTTPServer, SocketServer, getopt, grp, httplib, logging, os, pwd, select, signal, spydaap, sys
 import spydaap.daap, spydaap.metadata, spydaap.containers, spydaap.cache, spydaap.server, spydaap.zeroconf
 from spydaap.daap import do
@@ -119,7 +120,7 @@ def main():
                 uid = pwd.getpwnam(a)[2]
             else:
                 assert False, "unhandled option"
-    except getopt.GetoptError, err:
+    except getopt.GetoptError as err:
         # print help information and exit:
         sys.stderr.write(str(err))
         usage()
@@ -142,7 +143,7 @@ def main():
             if pid > 0:
                 # exit first parent
                 sys.exit(0)
-        except OSError, e:
+        except OSError as e:
             sys.stderr.write("fork #1 failed: %d (%s)\n" % (e.errno, e.strerror))
             sys.exit(1)
 
@@ -159,8 +160,8 @@ def main():
                 #print "Daemon PID %d" % pid
                 open(pidfile,'w').write("%d"%pid)
                 sys.exit(0)
-        except OSError, e:
-            print >>sys.stderr, "fork #2 failed: %d (%s)" % (e.errno, e.strerror)
+        except OSError as e:
+            print("fork #2 failed: %d (%s)" % (e.errno, e.strerror), file=sys.stderr)
             sys.exit(1)
         really_main()
 

@@ -5,28 +5,16 @@ Release process
 This is an attempt to document what needs to be done in order to create a
 release for Exaile.
 
-TODO: Update these instructions for github releases!
-
 Step one: Translations
 ----------------------
 
-Merge the translations branch for the current series.
+Merge the translations from https://hosted.weblate.org/projects/exaile/master/
 
-If a new series was created and no translations branch exists, follow
-these steps:
+If you are a member of https://github.com/exaile you should be able to
+import all translations from some github web UI into the git repository.
 
-* Create a new branch for translations, include the series in the branch
-  name, like "translations-3.4.x" for the "3.4.x" series
-* Open the translation settings page of the series on Launchpad:
-  https://translations.launchpad.net/exaile/3.4.x/+translations-settings
-* In "Import translations from branch" you should at least select
-  "Import template files" to have changes in code automatically show up
-  in the translation tool of Launchpad.
-* In "Export translations to branch" you just "Choose a target branch",
-  namely the one you just created.
-
-You can reach the settings for all series via the general translations
-page: https://translations.launchpad.net/exaile
+If you are no member clone git://git.weblate.org/exaile.git and add the
+translations into your git repository.
 
 Step two: Version bumping
 -------------------------
@@ -43,18 +31,26 @@ the release.::
 
 .. _win32_installer:
 
-Step three: Linux + Windows
----------------------------
+Step three: Installing the Python GTK3/GST SDK
+----------------------------------------------
 
-The 'make dist' command will build both the source distribution and the
-Windows version using NSIS running on Wine. You must install NSIS and the
-inetc plugin.
+You will need to have the SDK installed. Here's what you do::
 
-* Install NSIS 2 (http://nsis.sourceforge.net/Main_Page)
-* Install the inetc plugin (http://nsis.sourceforge.net/Inetc_plug-in)
-    * Unzip it to `~/.wine/drive_c/Program Files (x86)/NSIS`
+    git clone https://github.com/exaile/python-gtk3-gst-sdk
 
-Once everything is installed, you can just run the following::
+Next install the SDK links by running this from inside the tools/installer
+directory, with the second argument set to the platform that you're building
+for::
+
+    /path/to/python-gtk3-gst-sdk/create_links.sh windows
+    /path/to/python-gtk3-gst-sdk/create_links.sh osx
+
+
+Step four: Building the Windows installer and source distribution
+-----------------------------------------------------------------
+
+You can build the source distribution and the Windows installer by running
+the following::
 
     $ make dist
     
@@ -64,41 +60,39 @@ Once everything is installed, you can just run the following::
 Step four: OSX
 --------------
 
-You need py2app installed to create an OSX dmg file. Once you have that
-installed, then you can do the following::
+You can build the OSX DMG image by running the following from the
+tools/installer directory::
 
-    $ cd tools/osx
-    $ ./create_dmg.sh
+    $ ./build_osx_installer.sh
 
 If everything succeeded, you should find a file called "exaile-VERSION.dmg" at
-dist/exaile-VERSION.dmg.
+tools/installer/exaile-VERSION.dmg.
 
 
-Step five: Upload everything to launchpad
------------------------------------------
+Step five: Upload everything to github
+--------------------------------------
 
 * Linux: exaile-VERSION.tar.gz + exaile-VERSION.tar.gz.asc
 * Windows: exaile-VERSION.exe + exaile-VERSION.exe.asc
 * OSX: exaile-VERSION.dmg + exaile-VERSION.dmg.asc
 
 
-Step five: clean any relevant bug reports
------------------------------------------
+Step six: close out the milestone on github
+-------------------------------------------
 
-Next, any bugs on launchpad for the release should be marked as 'Fix released'. There is
-an easy way to do this via email...  TODO
+TODO
 
 
-Step six: bump the version again
---------------------------------
+Step seven: bump the version again
+----------------------------------
 
 The version in trunk should reflect the upcoming release with a -dev in it.
 
 TODO: Except after a beta/RC? What's the right transition?
 
-Step seven: send release notices
+Step eight: send release notices
 --------------------------------
 
 * Update download links on exaile.org
-* Add article to exaile.org
+* Add notice artifact to exaile.org
 * Send email to mailing lists

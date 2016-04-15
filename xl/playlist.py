@@ -32,9 +32,8 @@ in playlists as well as methods to import and export from various file formats.
 from __future__ import with_statement
 import cgi
 from collections import namedtuple
-from contextlib import closing
 from datetime import datetime, timedelta
-import gio
+from gi.repository import Gio
 import logging
 import os
 import random
@@ -58,7 +57,7 @@ from xl import (
     trax,
     xdg,
 )
-from xl.common import MetadataList
+from xl.common import GioFileInputStream, GioFileOutputStream, MetadataList
 from xl.nls import gettext as _
 from xl.metadata.tags import tag_data
 
@@ -104,9 +103,9 @@ def is_valid_playlist(path):
         :param path: the source path
         :type path: string
     """
-    content_type = gio.content_type_guess(path)
+    content_type = Gio.content_type_guess(path)[0]
 
-    if not gio.content_type_is_unknown(content_type):
+    if not Gio.content_type_is_unknown(content_type):
         for provider in providers.get('playlist-format-converter'):
             if content_type in provider.content_types:
                 return True
@@ -130,9 +129,9 @@ def import_playlist(path):
         :rtype: :class:`Playlist`
     """
     # First try the cheap Gio way
-    content_type = gio.content_type_guess(path)
+    content_type = Gio.content_type_guess(path)[0]
 
-    if not gio.content_type_is_unknown(content_type):
+    if not Gio.content_type_is_unknown(content_type):
         for provider in providers.get('playlist-format-converter'):
             if content_type in provider.content_types:
                 return provider.import_from_file(path)
@@ -145,7 +144,7 @@ def import_playlist(path):
             return provider.import_from_file(path)
 
     # Last try the expensive Gio way (downloads the data for inspection)
-    content_type = gio.File(path).\
+    content_type = Gio.File.new_for_uri(path).\
         query_info('standard::content-type').\
             get_content_type()
 
@@ -162,6 +161,11 @@ def export_playlist(playlist, path, options=None):
         it exports
     """
     file_extension = path.split('.')[-1]
+    
+    if hasattr(playlist, 'get_playlist'):
+        playlist = playlist.get_playlist()
+        if playlist is None:
+            raise InvalidPlaylistTypeError("SmartPlaylist not associated with a collection")
 
     for provider in providers.get('playlist-format-converter'):
         if file_extension in provider.file_extensions:
@@ -216,7 +220,7 @@ class FormatConverter(object):
             :returns: a name
             :rtype: string
         """
-        gfile = gio.File(path)
+        gfile = Gio.File.new_for_uri(path)
         name = gfile.get_basename()
 
         for extension in self.file_extensions:
@@ -234,7 +238,7 @@ class FormatConverter(object):
             :param track_path: the path of the track
             :type track_path: string
         """
-        playlist_uri = gio.File(playlist_path).get_uri()
+        playlist_uri = Gio.File.new_for_uri(playlist_path).get_uri()
         # Track path will not be changed if it already is a fully qualified URL
         track_uri = urlparse.urljoin(playlist_uri, track_path.replace('\\','/'))
         
@@ -248,7 +252,7 @@ class FormatConverter(object):
         # TODO: Scan collection for tracks as last resort?? 
         
         if track_uri.startswith('file:///') and \
-                not gio.File(track_uri).query_exists():
+                not Gio.File.new_for_uri(track_uri).query_exists(None):
             
             if not playlist_uri.startswith('file:///'):
                 logging.debug('Track does not seem to exist, using original path')
@@ -273,7 +277,7 @@ class FormatConverter(object):
 
                 for uri in _iter_uris(playlist_uri, track_path):
                     logging.debug('Trying %s' % uri)
-                    if gio.File(uri).query_exists():
+                    if Gio.File.new_for_uri(uri).query_exists(None):
                         track_uri = uri
                         logging.debug('Track found at %s' % uri)
                         break
@@ -293,7 +297,7 @@ class FormatConverter(object):
             :type options: :class:`PlaylistExportOptions`
         """
         if options is not None and options.relative:
-            playlist_file = gio.File(playlist_path)
+            playlist_file = Gio.File.new_for_uri(playlist_path)
             # Strip playlist filename from export path
             export_path = playlist_file.get_uri()[:-len(playlist_file.get_basename())]
 
@@ -307,7 +311,7 @@ class FormatConverter(object):
                 # the same URI scheme and location as the playlist
                 if export_path_components.scheme == track_path_components.scheme and \
                    export_path_components.netloc == track_path_components.netloc:
-                    # gio.File.get_relative_path does not generate relative paths
+                    # Gio.File.get_relative_path does not generate relative paths
                     # for tracks located above the playlist in the path hierarchy,
                     # thus process both paths as done here
                     track_path = os.path.relpath(
@@ -341,7 +345,7 @@ class M3UConverter(FormatConverter):
             :param options: exporting options
             :type options: :class:`PlaylistExportOptions`
         """
-        with closing(gio.File(path).replace('', False)) as stream:
+        with GioFileOutputStream(Gio.File.new_for_uri(path)) as stream:
             stream.write('#EXTM3U\n')
 
             if playlist.name:
@@ -356,7 +360,7 @@ class M3UConverter(FormatConverter):
 
                 stream.write('#EXTINF:{length},{title}\n{path}\n'.format(
                     length=length,
-                    title=' - '.join(title),
+                    title=' - '.join(title).encode('utf-8'),
                     path=track_path
                 ))
 
@@ -374,15 +378,11 @@ class M3UConverter(FormatConverter):
         lineno = 0
 
         logger.debug('Importing M3U playlist: %s' % path)
-        
-        with closing(gio.DataInputStream(gio.File(path).read())) as stream:
-            while True:
-                line = stream.read_line()
+
+        with GioFileInputStream(Gio.File.new_for_uri(path)) as stream:
+            for line in stream:
                 lineno += 1
-
-                if not line:
-                    break
-
+                
                 line = line.strip()
 
                 if not line:
@@ -417,7 +417,7 @@ class M3UConverter(FormatConverter):
                             if track.get_tag_raw(tag) is None:
                                 try:
                                     track.set_tag_raw(tag, value)
-                                except Exception, e:
+                                except Exception as e:
                                     # Python 3: raise UnknownPlaylistTrackError() from e
                                     # Python 2: .. no good solution 
                                     raise UnknownPlaylistTrackError("line %s: %s" % (lineno, e))
@@ -470,7 +470,7 @@ class PLSConverter(FormatConverter):
 
         pls_playlist.set('playlist', 'Version', 2)
 
-        with closing(gio.File(path).replace('', False)) as stream:
+        with GioFileOutputStream(Gio.File.new_for_uri(path)) as stream:
             pls_playlist.write(stream)
 
     def import_from_file(self, path):
@@ -489,25 +489,19 @@ class PLSConverter(FormatConverter):
         )
 
         pls_playlist = RawConfigParser()
-        gfile = gio.File(path)
+        gfile = Gio.File.new_for_uri(path)
         
         logger.debug('Importing PLS playlist: %s' % path)
 
         try:
-            with closing(gio.DataInputStream(gfile.read())) as stream:
-                # RawConfigParser.readfp() requires fp.readline()
-                stream.readline = stream.read_line
+            with GioFileInputStream(gfile) as stream:
                 pls_playlist.readfp(stream)
         except MissingSectionHeaderError:
             # Most likely version 1, thus only a list of URIs
             playlist = Playlist(self.name_from_path(path))
 
-            with closing(gio.DataInputStream(gfile.read())) as stream:
-                while True:
-                    line = stream.read_line()
-
-                    if not line:
-                        break
+            with GioFileInputStream(gfile) as stream:
+                for line in stream:
 
                     line = line.strip()
 
@@ -618,7 +612,7 @@ class ASXConverter(FormatConverter):
         """
         from xml.sax.saxutils import escape
 
-        with closing(gio.File(path).replace('', False)) as stream:
+        with GioFileOutputStream(Gio.File.new_for_uri(path)) as stream:
             stream.write('<asx version="3.0">\n')
             stream.write('  <title>%s</title>\n' % escape(playlist.name))
 
@@ -654,10 +648,10 @@ class ASXConverter(FormatConverter):
         from xml.etree.cElementTree import XMLParser
 
         playlist = Playlist(self.name_from_path(path))
-        
+
         logger.debug('Importing ASX playlist: %s' % path)
 
-        with closing(gio.DataInputStream(gio.File(path).read())) as stream:
+        with GioFileInputStream(Gio.File.new_for_uri(path)) as stream:
             parser = XMLParser(target=self.ASXPlaylistParser())
             parser.feed(stream.read())
 
@@ -795,7 +789,7 @@ class XSPFConverter(FormatConverter):
         """
         from xml.sax.saxutils import escape
 
-        with closing(gio.File(path).replace('', False)) as stream:
+        with GioFileOutputStream(Gio.File.new_for_uri(path)) as stream:
             stream.write('<?xml version="1.0" encoding="UTF-8"?>\n')
             stream.write('<playlist version="1" xmlns="http://xspf.org/ns/0/">\n')
 
@@ -837,10 +831,11 @@ class XSPFConverter(FormatConverter):
         import xml.etree.cElementTree as ETree
 
         playlist = Playlist(name=self.name_from_path(path))
+
         
         logger.debug('Importing XSPF playlist: %s' % path)
 
-        with closing(gio.DataInputStream(gio.File(path).read())) as stream:
+        with GioFileInputStream(Gio.File.new_for_uri(path)) as stream:
             tree = ETree.ElementTree(file=stream)
             ns = "{http://xspf.org/ns/0/}"
             nodes = tree.find("%strackList" % ns).findall("%strack" % ns)
@@ -908,7 +903,7 @@ class Playlist(object):
         self.__tracks = MetadataList()
         for track in initial_tracks:
             if not isinstance(track, trax.Track):
-                raise ValueError, "Need trax.Track object, got %s" % repr(type(track))
+                raise ValueError("Need trax.Track object, got %r" % type(track))
             self.__tracks.append(track)
         self.__shuffle_mode = self.shuffle_modes[0]
         self.__repeat_mode = self.repeat_modes[0]
@@ -969,7 +964,7 @@ class Playlist(object):
             return
         if position != -1:
             if position >= len(self.__tracks):
-                raise IndexError, "Cannot set position past end of playlist"
+                raise IndexError("Cannot set position past end of playlist")
             self.__tracks.set_meta_key(position, "playlist_current_position", True)
         self.__current_position = position
         if oldposition != -1:
@@ -1094,7 +1089,7 @@ class Playlist(object):
                 t = trax.sort_tracks(['tracknumber'], t)
                 return self.__tracks.index(t[0]), t[0]
         else:
-            hist = set([ i for i, tr in self.get_shuffle_history() ])
+            hist = { i for i, tr in self.get_shuffle_history() }
             try:
                 return random.choice([ (i, self.__tracks[i]) for i, tr in enumerate(self.__tracks)
                         if i not in hist])
@@ -1138,8 +1133,12 @@ class Playlist(object):
                 next = None
 
         if next is None:
-            if repeat_mode == 'all' and len(self) > 0:
-                return self.__get_next(-1)
+            if repeat_mode == 'all':
+                if len(self) == 1:
+                    next = self[current_position]
+                    next_index = current_position
+                if len(self) > 1:
+                    return self.__get_next(-1)
 
         self.__next_data = (None, next_index, next)
         return next
@@ -1235,7 +1234,7 @@ class Playlist(object):
     def __set_mode(self, modename, mode):
         modes = getattr(self, "%s_modes"%modename)
         if mode not in modes:
-            raise TypeError, "Mode %s is invalid" % mode
+            raise TypeError("Mode %s is invalid" % mode)
         else:
             self.__dirty = True
             setattr(self, "_Playlist__%s_mode"%modename, mode)
@@ -1384,7 +1383,11 @@ class Playlist(object):
             for item in items:
                 value = track.get_tag_raw(item)
                 if value is not None:
-                    meta[item] = value[0]
+                    # FIXME: This should join multiple values.
+                    v = value[0]
+                    if isinstance(v, unicode):
+                        v = v.encode('utf-8')
+                    meta[item] = v
             buffer += '\t%s\n' % urllib.urlencode(meta)
             try:
                 f.write(buffer.encode('utf-8'))
@@ -1450,7 +1453,7 @@ class Playlist(object):
             if items.get("repeat_mode") == "playlist":
                 items['repeat_mode'] = "all"
         elif ver[0] > self.__playlist_format_version[0]:
-            raise IOError, "Cannot load playlist, unknown format"
+            raise IOError("Cannot load playlist, unknown format")
         elif ver > self.__playlist_format_version:
             logger.warning("Playlist created on a newer Exaile version, some attributes may not be handled.")
         f.close()
@@ -1472,7 +1475,7 @@ class Playlist(object):
             if not track.is_local() and meta is not None:
                 meta = cgi.parse_qs(meta)
                 for k, v in meta.iteritems():
-                    track.set_tag_raw(k, v[0], notify_changed=False)
+                    track.set_tag_raw(k, v[0].decode('utf-8'), notify_changed=False)
 
             trs.append(track)
 
@@ -1531,7 +1534,7 @@ class Playlist(object):
         if isinstance(i, slice):
             for x in value:
                 if not isinstance(x, trax.Track):
-                    raise ValueError, "Need trax.Track object, got %s" % repr(type(x))
+                    raise ValueError("Need trax.Track object, got %r" % type(x))
 
             (start, end, step) = self.__tuple_from_slice(i)
 
@@ -1542,7 +1545,7 @@ class Playlist(object):
 
             if step != 1:
                 if len(value) != len(oldtracks):
-                    raise ValueError, "Extended slice assignment must match sizes."
+                    raise ValueError("Extended slice assignment must match sizes.")
             self.__tracks.__setitem__(i, value)
             removed = MetadataList(zip(range(start, end, step), oldtracks),
                     oldtracks.metadata)
@@ -1552,7 +1555,7 @@ class Playlist(object):
             added = MetadataList(zip(range(start, end, step), value), metadata)
         else:
             if not isinstance(value, trax.Track):
-                raise ValueError, "Need trax.Track object, got %s" % repr(type(value))
+                raise ValueError("Need trax.Track object, got %r" % type(value))
             self.__tracks[i] = value
             removed = [(i, oldtracks)]
             added = [(i, value)]
@@ -1852,16 +1855,11 @@ class SmartPlaylist(object):
                 params += [param]
                 continue
             (field, op, value) = param
-            fieldtype = tag_data.get(field).type
+            
             s = ""
 
             if field == '__rating':
                 value = float((100.0*value)/maximum)
-            elif fieldtype == 'timestamp':
-                duration, unit = value
-                delta = durations[unit](duration)
-                point = datetime.now() - delta
-                value = time.mktime(point.timetuple())
             elif field == '__playlist':
                 try:
                     pl = main.exaile().playlists.get_playlist(value)
@@ -1876,6 +1874,11 @@ class SmartPlaylist(object):
                 else:
                     matchers.append(trax.TracksNotInList(pl))
                 continue
+            elif tag_data.get(field) == 'timestamp':
+                duration, unit = value
+                delta = durations[unit](duration)
+                point = datetime.now() - delta
+                value = time.mktime(point.timetuple())
 
             if op == ">=" or op == "<=":
                 s += '( %(field)s%(op)s%(value)s ' \
@@ -1963,6 +1966,9 @@ class PlaylistManager(object):
         self.order_file = os.path.join(self.playlist_dir, 'order_file')
         self.playlists = []
         self.load_names()
+        
+    def _create_playlist(self, name):
+        return self.playlist_class(name=name)
 
     def has_playlist_name(self, playlist_name):
         """
@@ -2029,7 +2035,7 @@ class PlaylistManager(object):
             # check against hidden files since some editors put
             # temporary stuff in the same dir.
             if f != os.path.basename(self.order_file) and not f.startswith("."):
-                pl = self.playlist_class(f)
+                pl = self._create_playlist(f)
                 pl.load_from_location(os.path.join(self.playlist_dir, f))
                 existing.append(pl.name)
 
@@ -2047,7 +2053,7 @@ class PlaylistManager(object):
             @param name: the name of the playlist you wish to retrieve
         """
         if name in self.playlists:
-            pl = self.playlist_class(name=name)
+            pl = self._create_playlist(name)
             pl.load_from_location(os.path.join(self.playlist_dir,
                 encode_filename(name)))
             return pl
@@ -2089,7 +2095,7 @@ class PlaylistManager(object):
         else:
             f = open(location, "w")
         for playlist in self.playlists:
-            f.write(playlist)
+            f.write(playlist.encode('utf-8'))
             f.write('\n')
 
         f.write("EOF\n")
@@ -2119,9 +2125,29 @@ class PlaylistManager(object):
             line = f.readline()
             if line == "EOF\n" or line == "":
                 break
-            playlists.append(line.strip())
+            playlists.append(line[:-1].decode('utf-8'))
         f.close()
         return playlists
+
+class SmartPlaylistManager(PlaylistManager):
+    """
+        Manages saving and loading of smart playlists
+    """
+    def __init__(self, playlist_dir, playlist_class=SmartPlaylist, collection=None):
+        """
+            Initializes a smart playlist manager
+
+            @param playlist_dir: the data dir to save playlists to
+            @param playlist_class: the playlist class to use
+            @param collection: the default collection to use for searching
+        """
+        self.collection = collection
+        PlaylistManager.__init__(self, playlist_dir=playlist_dir,
+                                       playlist_class=playlist_class)
+        
+    def _create_playlist(self, name):
+        # set a default collection so that get_playlist() always works
+        return self.playlist_class(name=name, collection=self.collection)
 
 # vim: et sts=4 sw=4
 

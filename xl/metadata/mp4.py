@@ -49,12 +49,13 @@ class MP4Format(BaseFormat):
             'comment':     '\xa9cmt',
             'originaldate':'----:com.apple.iTunes:ORIGYEAR',
             'cover':       'covr',
+            'language': '----:com.apple.iTunes:LANGUAGE',
         }
     others = False
     writable = True
 
     def _get_tag(self, f, name):
-        if not f.has_key(name):
+        if name not in f:
             return []
         elif name == 'covr':
             ret = []

@@ -27,19 +27,46 @@
 # support python 2.5
 from __future__ import with_statement
 
+from gi.repository import GLib
+from gi.repository import Gst
+from gi.repository import Gtk
+
 from xl import providers, event, settings, xdg
-from xl.player.pipe import ElementBin
+from xl.player.gst.gst_utils import ElementBin
 from xlgui.widgets import menu
 
 from xl.nls import gettext as _
 
-import gst, gtk, glib
 import os, string
 
+# Values from <http://www.xmms.org/faq.php#General3>, adjusted to be less loud
+# in general ((mean + max) / 2 = 0).
+DEFAULT_PRESETS = [
+    ('Custom', 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    ('Default', 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    ('Classical', 0, 1.6, 1.6, 1.6, 1.6, 1.6, 1.6, -5.6, -5.6, -5.6, -8.0),
+    ('Club', 0, -5.4, -5.4, 2.6, 0.2, 0.2, 0.2, -2.2, -5.4, -5.4, -5.4),
+    ('Dance', 0, 4.8, 2.4, -2.4, -4.8, -4.8, -10.4, -12.0, -12.0, -4.8, -4.8),
+    ('Full Bass', 0, -11.5, 6.1, 6.1, 2.1, -1.9, -7.5, -11.5, -13.9, -14.7, -14.7),
+    ('Full Bass and Treble', 0, -1.1, -2.7, -8.3, -15.5, -13.1, -6.7, -0.3, 2.9, 3.7, 3.7),
+    ('Full Treble', 0, -20.3, -20.3, -20.3, -14.7, -8.3, 0.5, 5.3, 5.3, 5.3, 6.1),
+    ('Laptop Speakers and Headphones', 0, -3.9, 2.5, -3.1, -11.9, -11.1, -7.1, -3.9, 0.9, 3.2, 3.2),
+    ('Large Hall', 0, 4.3, 4.3, -0.5, -0.5, -6.1, -10.9, -10.9, -10.9, -6.1, -6.1),
+    ('Live', 0, -9.0, -4.2, -0.2, 1.4, 1.4, 1.4, -0.2, -1.8, -1.8, -1.8),
+    ('Party', 0, 2.2, 2.2, -5.0, -5.0, -5.0, -5.0, -5.0, -5.0, 2.2, 2.2),
+    ('Pop', 0, -6.4, 0.0, 2.4, 3.2, 0.8, -4.8, -7.2, -7.2, -6.4, -6.4),
+    ('Reggae', 0, -3.6, -3.6, -3.6, -9.2, -3.6, 2.8, 2.8, -3.6, -3.6, -3.6),
+    ('Rock', 0, 0.3, -2.9, -13.3, -15.7, -10.9, -3.7, 1.1, 3.5, 3.5, 3.5),
+    ('Ska', 0, -9.9, -12.3, -11.5, -7.5, -3.5, -1.9, 1.3, 2.1, 3.7, 2.1),
+    ('Soft', 0, -3.6, -6.8, -8.4, -10.8, -8.4, -4.4, -0.4, 1.2, 2.8, 3.6),
+    ('Soft Rock', 0, -0.8, -0.8, -2.4, -4.8, -8.8, -10.4, -8.0, -4.8, -2.4, 4.0),
+    ('Techno', 0, 1.2, -1.2, -6.8, -12.4, -11.6, -6.8, 1.2, 2.8, 2.8, 2.0),
+]
+
 def enable(exaile):
-    providers.register("postprocessing_element", GSTEqualizer)
+    providers.register("gst_audio_filter", GSTEqualizer)
     if exaile.loading:
-        event.add_callback(_enable, 'gui_loaded')
+        event.add_ui_callback(_enable, 'gui_loaded')
     else:
         _enable(None, exaile, None)
 
@@ -51,7 +78,7 @@ def _enable(event_type, exaile, nothing):
     EQ_MAIN = EqualizerPlugin(exaile)
 
 def disable(exaile):
-    providers.unregister("postprocessing_element", GSTEqualizer)
+    providers.unregister("gst_audio_filter", GSTEqualizer)
     global EQ_MAIN
     EQ_MAIN.disable()
     EQ_MAIN = None
@@ -62,21 +89,21 @@ class GSTEqualizer(ElementBin):
     """
     index = 99
     name = "equalizer-10bands"
-    def __init__(self, player):
-        ElementBin.__init__(self, player, name=self.name)
+    def __init__(self):
+        ElementBin.__init__(self, name=self.name)
 
-        self.audioconvert = gst.element_factory_make("audioconvert")
+        self.audioconvert = Gst.ElementFactory.make("audioconvert", None)
         self.elements[40] = self.audioconvert
 
-        self.preamp = gst.element_factory_make("volume")
+        self.preamp = Gst.ElementFactory.make("volume", None)
         self.elements[50] = self.preamp
 
-        self.eq10band = gst.element_factory_make("equalizer-10bands")
+        self.eq10band = Gst.ElementFactory.make("equalizer-10bands", None)
         self.elements[60] = self.eq10band
 
         self.setup_elements()
 
-        event.add_callback(self._on_option_set,
+        event.add_ui_callback(self._on_option_set,
                 "plugin_equalizer_option_set")
 
         setts = ["band%s" for n in xrange(10)] + ["pre", "enabled"]
@@ -124,12 +151,12 @@ class EqualizerPlugin:
         self.window = None
 
         # add menu item to tools menu
-        self.MENU_ITEM = menu.simple_menu_item('equalizer', ['plugin-sep'], _('Equalizer'),
+        self.MENU_ITEM = menu.simple_menu_item('equalizer', ['plugin-sep'], _('_Equalizer'),
             callback=lambda *x: self.show_gui(exaile))
         providers.register('menubar-tools-menu', self.MENU_ITEM)
 
         self.presets_path = os.path.join(xdg.get_config_dir(), 'eq-presets.dat')
-        self.presets = gtk.ListStore(str, float, float, float, float,
+        self.presets = Gtk.ListStore(str, float, float, float, float,
                 float, float, float, float, float, float, float)
         self.load_presets()
 
@@ -190,7 +217,7 @@ class EqualizerPlugin:
                 'on_band9_format_value':self.adjust_band
                 }
 
-        self.ui = gtk.Builder()
+        self.ui = Gtk.Builder()
         self.ui.add_from_file( os.path.join( os.path.dirname(
                 os.path.realpath(__file__)), 'equalizer.ui'))
         self.ui.connect_signals(signals)
@@ -206,7 +233,7 @@ class EqualizerPlugin:
         #Put the presets into the presets combobox
         combobox = self.ui.get_object("combo-presets")
         combobox.set_model(self.presets)
-        combobox.set_text_column(0)
+        combobox.set_entry_text_column(0)
         combobox.set_active(0)
 
         self.ui.get_object('chk-enabled').set_active(
@@ -237,7 +264,7 @@ class EqualizerPlugin:
         """
         # Buildable.get_name clashes with Widget.get_name. See
         # https://bugzilla.gnome.org/show_bug.cgi?id=591085#c19
-        widget_name = gtk.Buildable.get_name(widget)
+        widget_name = Gtk.Buildable.get_name(widget)
         band = widget_name[-1]
         if widget.get_value() != settings.get_option(
                 "plugin/equalizer/band" + band):
@@ -329,41 +356,5 @@ class EqualizerPlugin:
                     self.presets.append(preset)
                     line = f.readline()
         else:
-            self.presets.append(["Custom",
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-            self.presets.append(["Default",
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-            self.presets.append(["Classical",
-                    0, 0, 0, 0, 0, 0, 0, -7.2, -7.2, -7.2, -9.6])
-            self.presets.append(["Club",
-                    0, 0, 0, 8, 5.6, 5.6, 5.6, 3.2, 0, 0, 0])
-            self.presets.append(["Dance",
-                    0, 9.6, 7.2, 2.4, 0, 0, -5.6, -7.2, -7.2, 0, 0])
-            self.presets.append(["Full Bass",
-                    0, -8, 9.6, 9.6, 5.6, 1.6, -4, -8, -10.4, -11.2, -11.2])
-            self.presets.append(["Full Bass and Treble",
-                    0, 7.2, 5.6, 0, -7.2, -4.8, 1.6, 8, 11.2, 12, 12])
-            self.presets.append(["Full Treble",
-                    0, -9.6, -9.6, -9.6, -4, 2.4, 11.2, 16, 16, 16, 16.8])
-            self.presets.append(["Laptop Speakers and Headphones",
-                    0, 4.8, 11.2, 5.6, -3.2, -2.4, 1.6, 4.8, 9.6, 11.9, 11.9])
-            self.presets.append(["Large Hall",
-                    0, 10.4, 10.4, 5.6, 5.6, 0, -4.8, -4.8, -4.8, 0, 0])
-            self.presets.append(["Live",
-                    0, -4.8, 0, 4, 5.6, 5.6, 5.6, 4, 2.4, 2.4, 2.4])
-            self.presets.append(["Party",
-                    0, 7.2, 7.2, 0, 0, 0, 0, 0, 0, 7.2, 7.2])
-            self.presets.append(["Pop",
-                    0, -1.6, 4.8, 7.2, 8, 5.6, 0, -2.4, -2.4, -1.6, -1.6])
-            self.presets.append(["Reggae",
-                    0, 0, 0, 0, -5.6, 0, 6.4, 6.4, 0, 0, 0])
-            self.presets.append(["Rock",
-                    0, 8, 4.8, -5.6, -8, -3.2, 4, 8.8, 11.2, 11.2, 11.2])
-            self.presets.append(["Ska",
-                    0, -2.4, -4.8, -4, 0, 4, 5.6, 8.8, 9.6, 11.2, 9.6])
-            self.presets.append(["Soft",
-                    0, 4.8, 1.6, 0, -2.4, 0, 4, 8, 9.6, 11.2, 12])
-            self.presets.append(["Soft Rock",
-                    0, 4, 4, 2.4, 0, -4, -5.6, -3.2, 0, 2.4, 8.8])
-            self.presets.append(["Techno",
-                    0, 8, 5.6, 0, -5.6, -4.8, 0, 8, 9.6, 9.6, 8.8])
+            for preset in DEFAULT_PRESETS:
+                self.presets.append(preset)

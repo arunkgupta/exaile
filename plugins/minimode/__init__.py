@@ -15,7 +15,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import cairo
-import gtk
+from gi.repository import Gtk
 
 from xl import event, providers, settings
 from xl.nls import gettext as _
@@ -70,7 +70,7 @@ def disable(exaile):
 def get_preferences_pane():
     return minimode_preferences
 
-class MiniMode(gtk.Window):
+class MiniMode(Gtk.Window):
     """
         Mini Mode main window
     """
@@ -81,7 +81,7 @@ class MiniMode(gtk.Window):
             Sets up the mini mode main window and
             options to access it
         """
-        gtk.Window.__init__(self)
+        Gtk.Window.__init__(self)
         self.set_title('Exaile Mini Mode')
         self.set_resizable(False)
 
@@ -91,10 +91,10 @@ class MiniMode(gtk.Window):
 
         self.box = controls.ControlBox()
         self.box.set_spacing(3)
-        alignment = gtk.Alignment(xscale=1, yscale=1)
+        alignment = Gtk.Alignment.new(1, 1, 0, 0)
         alignment.set_padding(0, 0, 3, 3)
         alignment.add(self.box)
-        self.border_frame = gtk.Frame()
+        self.border_frame = Gtk.Frame()
         self.border_frame.add(alignment)
         self.add(self.border_frame)
 
@@ -107,14 +107,14 @@ class MiniMode(gtk.Window):
         providers.register('menubar-view-menu', self.menuitem)
         providers.register('mainwindow-accelerators', self.accelerator)
 
-        mainbutton = gtk.Button(_('Mini Mode'))
-        mainbutton.set_image(gtk.image_new_from_icon_name(
-            'exaile-minimode', gtk.ICON_SIZE_BUTTON))
+        mainbutton = Gtk.Button(_('Mini Mode'))
+        mainbutton.set_image(Gtk.Image.new_from_icon_name(
+            'exaile-minimode', Gtk.IconSize.BUTTON))
         mainbutton.connect('clicked', self.on_mainbutton_clicked)
-        self.mainbutton_alignment = gtk.Alignment(xalign=1)
+        self.mainbutton_alignment = Gtk.Alignment.new(1, 0, 0, 0)
         self.mainbutton_alignment.add(mainbutton)
         action_area = exaile.gui.main.info_area.get_action_area()
-        action_area.pack_start(self.mainbutton_alignment)
+        action_area.pack_start(self.mainbutton_alignment, True, True, 0)
         action_area.reorder_child(self.mainbutton_alignment, 0)
         
         self.__active = False
@@ -134,7 +134,7 @@ class MiniMode(gtk.Window):
 
         exaile.gui.main.connect('main-visible-toggle',
             self.on_main_visible_toggle)
-        event.add_callback(self.on_option_set, 'plugin_minimode_option_set')
+        event.add_ui_callback(self.on_option_set, 'plugin_minimode_option_set')
         self.on_option_set('plugin_minimode_option_set', settings,
             'plugin/minimode/button_in_mainwindow')
 
@@ -151,7 +151,7 @@ class MiniMode(gtk.Window):
 
         self.set_active(False)
         self.box.destroy()
-        gtk.Window.destroy(self)
+        Gtk.Window.destroy(self)
 
     def set_active(self, active):
         """
@@ -164,7 +164,7 @@ class MiniMode(gtk.Window):
             self.exaile_window.hide()
             self.show_all()
         elif not active and self.props.visible:
-            self.hide_all()
+            self.hide()
             self.exaile_window.show()
 
         self.__active = active
@@ -196,18 +196,18 @@ class MiniMode(gtk.Window):
 
                         if value == 'full':
                             self.set_decorated(True)
-                            self.border_frame.set_shadow_type(gtk.SHADOW_NONE)
+                            self.border_frame.set_shadow_type(Gtk.ShadowType.NONE)
                         elif value == 'simple':
                             self.set_decorated(False)
-                            self.border_frame.set_shadow_type(gtk.SHADOW_OUT)
+                            self.border_frame.set_shadow_type(Gtk.ShadowType.OUT)
                     else:
                         self.set_decorated(False)
-                        self.border_frame.set_shadow_type(gtk.SHADOW_NONE)
+                        self.border_frame.set_shadow_type(Gtk.ShadowType.NONE)
                 elif option == 'plugin/minimode/use_alpha':
-                    self.unrealize()
-                    self.set_app_paintable(value)
-                    self.emit('screen-changed', self.get_screen())
-                    self.realize()
+                    if value:
+                        option = 'plugin/minimode/transparency'
+                        opacity = 1 - settings.get_option(option, self.__defaults[option])
+                        self.set_opacity(opacity)
                 elif option == 'plugin/minimode/horizontal_position':
                     h = value
                 elif option == 'plugin/minimode/vertical_position':
@@ -216,9 +216,11 @@ class MiniMode(gtk.Window):
 
             self.__dirty = False
 
-        self.resize(*self.size_request())
+        min_width, natural_width = self.get_preferred_width()
+        min_height, natural_height = self.get_preferred_height()
+        self.resize(natural_width, natural_height)
         self.queue_draw()
-        gtk.Window.do_show(self)
+        Gtk.Window.do_show(self)
         
         # GTK (or perhaps the theme?) likes to move the window to some 
         # random default position while showing it... so do these at the 
@@ -230,36 +232,6 @@ class MiniMode(gtk.Window):
             y = v
         
         self.move(x, y)
-
-    def do_expose_event(self, event):
-        """
-            Paints the window alpha transparency
-        """
-        context = self.props.window.cairo_create()
-        context.rectangle(*event.area)
-        context.clip()
-
-        background = self.style.bg[gtk.STATE_NORMAL]
-        opacity = 1 - settings.get_option('plugin/minimode/transparency', 0.3)
-        context.set_source_rgba(
-            float(background.red) / 256**2,
-            float(background.green) / 256**2,
-            float(background.blue) / 256**2,
-            opacity
-        )
-        context.set_operator(cairo.OPERATOR_SOURCE)
-        context.paint()
-
-        gtk.Window.do_expose_event(self, event)
-
-    def do_screen_changed(self, screen):
-        """
-            Updates the colormap on screen change
-        """
-        colormap = screen.get_rgba_colormap() or screen.get_rgb_colormap()
-        self.set_colormap(colormap)
-
-        self.chain(screen)
 
     def do_configure_event(self, event):
         """
@@ -295,7 +267,7 @@ class MiniMode(gtk.Window):
         """
         if self.__active:
             if self.props.visible:
-                self.hide_all()
+                self.hide()
             else:
                 self.show_all()
 
@@ -316,7 +288,7 @@ class MiniMode(gtk.Window):
                 self.mainbutton_alignment.set_no_show_all(False)
                 self.mainbutton_alignment.show_all()
             else:
-                self.mainbutton_alignment.hide_all()
+                self.mainbutton_alignment.hide()
                 self.mainbutton_alignment.set_no_show_all(True)
 
 # vim: et sts=4 sw=4

@@ -13,13 +13,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import gtk
+from gi.repository import Gtk
+
 import logging
 import os.path
 from threading import (
     Thread,
     Timer
 )
+
+import pylast
 
 from xl import (
     common,
@@ -28,7 +31,6 @@ from xl import (
     providers,
     settings
 )
-from xl.externals import pylast
 from xl.nls import gettext as _
 from xlgui import icons
 from xlgui.widgets.menu import MenuItem
@@ -132,9 +134,9 @@ class LoveMenuItem(MenuItem):
         """
         global LASTFMLOVER
 
-        item = gtk.ImageMenuItem(_('Love This Track'))
-        item.set_image(gtk.image_new_from_icon_name(
-            'love', gtk.ICON_SIZE_MENU))
+        item = Gtk.ImageMenuItem.new_with_mnemonic(_('_Love This Track'))
+        item.set_image(Gtk.Image.new_from_icon_name(
+            'love', Gtk.IconSize.MENU))
 
         if self.get_tracks_function is not None:
             tracks = self.get_tracks_function()
@@ -211,7 +213,7 @@ class LastFMLover(object):
         providers.register('playlist-context-menu', self.menu_item)
         providers.register('tray-icon-context', self.tray_menu_item)
 
-        event.add_callback(self.on_option_set, 'plugin_lastfmlove_option_set')
+        event.add_ui_callback(self.on_option_set, 'plugin_lastfmlove_option_set')
 
     def destroy(self):
         """

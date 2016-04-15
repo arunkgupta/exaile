@@ -18,7 +18,7 @@ import subprocess
 import logging
 import os
 import shutil
-import gtk
+from gi.repository import Gtk
 
 from xl import (
     event,
@@ -57,8 +57,8 @@ class Streamripper(object):
         options.append('-D')
         options.append('%A/%a/%T')
         if settings.get_option('plugin/streamripper/single_file', False):
-			options.append("-a")
-			options.append("-A")
+            options.append("-a")
+            options.append("-A")
         options.append("-r")
         options.append(settings.get_option('plugin/streamripper/relay_port', '8888'))
         options.append("-d")
@@ -75,8 +75,8 @@ class Streamripper(object):
 
         if add_call:
             event.add_callback(self.quit_application, 'quit_application')
-            event.add_callback(self.start_track, 'playback_track_start', player.PLAYER)
-            event.add_callback(self.stop_playback, 'playback_player_end', player.PLAYER)
+            event.add_ui_callback(self.start_track, 'playback_track_start', player.PLAYER)
+            event.add_ui_callback(self.stop_playback, 'playback_player_end', player.PLAYER)
         return False
 
     def stop_ripping(self):
@@ -113,14 +113,14 @@ class Streamripper(object):
 class Button(Streamripper):
     def __init__(self, exaile):
         self.exaile = exaile
-        self.button = gtk.ToggleButton()
-        self.button.set_relief(gtk.RELIEF_NONE)
-        image = gtk.Image()
-        image.set_from_stock(gtk.STOCK_MEDIA_RECORD, gtk.ICON_SIZE_MENU)
+        self.button = Gtk.ToggleButton()
+        self.button.set_relief(Gtk.ReliefStyle.NONE)
+        image = Gtk.Image()
+        image.set_from_stock(Gtk.STOCK_MEDIA_RECORD, Gtk.IconSize.MENU)
         self.button.set_image(image)
 
         toolbar = self.exaile.gui.play_toolbar
-        toolbar.pack_start(self.button, False, False)
+        toolbar.pack_start(self.button, False, False, 0)
         toolbar.reorder_child(self.button, 3)
 
         self.button.show()

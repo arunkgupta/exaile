@@ -24,8 +24,8 @@
 # do so. If you do not wish to do so, delete this exception statement
 # from your version.
 
-import gtk
-import gobject
+from gi.repository import Gdk
+from gi.repository import Gtk
 
 import os
 import os.path
@@ -45,51 +45,22 @@ from xl.nls import gettext as _
 import xlgui
 from xlgui import main
 from xlgui.widgets import menu, dialogs
-from xlgui.widgets.notebook import NotebookPage, NotebookTab
-from xlgui.widgets.playlist import PlaylistView
+from xlgui.widgets.notebook import NotebookTab
+from xlgui.widgets.playlist import PlaylistPageBase, PlaylistView
 
 import history_preferences
-
-plugin = None
-
-def get_preferences_pane():
-    return history_preferences
-
-
-def enable(exaile):
-    '''Called on plugin enable'''
-    if exaile.loading:
-        event.add_callback(_enable, 'exaile_loaded')
-    else:
-        _enable(None, exaile, None)
-        
-def _enable(eventname, exaile, nothing):
-
-    global plugin
-    plugin = HistoryPlugin(exaile)
-    
-def disable(exaile):
-    '''Called on plugin disable'''
-    
-    global plugin
-    if plugin is not None:
-        plugin.disable_plugin(exaile)
-        plugin = None
-
-def teardown(exaile):
-    '''Called on exaile quit'''
-    global plugin
-    if plugin is not None:
-        plugin.teardown_plugin(exaile)
         
 
 class HistoryPlugin(object):
     '''Implements logic for plugin'''
     
-    def __init__(self, exaile):
+    def get_preferences_pane(self):
+        return history_preferences
     
+    def enable(self, exaile):
         self.exaile = exaile
     
+    def on_gui_loaded(self):
         save_on_exit = settings.get_option('plugin/history/save_on_exit', history_preferences.save_on_exit_default)
         shown = settings.get_option('plugin/history/shown', False)
     
@@ -114,7 +85,7 @@ class HistoryPlugin(object):
         if save_on_exit and shown:
             self.show_history( True )
         
-    def teardown_plugin(self, exaile):
+    def teardown(self, exaile):
         '''Called when exaile is exiting'''
         
         if settings.get_option('plugin/history/save_on_exit', history_preferences.save_on_exit_default ):
@@ -125,7 +96,7 @@ class HistoryPlugin(object):
             
         self.show_history(False)
     
-    def disable_plugin(self, exaile):
+    def disable(self, exaile):
     
         '''Called when the plugin is disabled'''
         if self.menu:
@@ -135,11 +106,12 @@ class HistoryPlugin(object):
         self.show_history(False)
 
         if os.path.exists( self.history_loc ):
-        
-            dialog = gtk.MessageDialog( None, gtk.DIALOG_MODAL, gtk.MESSAGE_QUESTION, gtk.BUTTONS_YES_NO, 
+            # TODO: The parent should be the Preferences window, but we don't
+            # have access to it, so this just uses the main window.
+            dialog = Gtk.MessageDialog( exaile.gui.main.window, Gtk.DialogFlags.MODAL, Gtk.MessageType.QUESTION, Gtk.ButtonsType.YES_NO,
                                         _('Erase stored history?') )
                 
-            if dialog.run() == gtk.RESPONSE_YES:
+            if dialog.run() == Gtk.ResponseType.YES:
                 try:
                     os.unlink( self.history_loc )
                 except:
@@ -164,42 +136,42 @@ class HistoryPlugin(object):
         else:
             self.history_tab.close()
 
+plugin_class = HistoryPlugin
         
-class HistoryPlaylistPage( NotebookPage ):
+class HistoryPlaylistPage(PlaylistPageBase):
 
     # add two buttons on the bottom: 'save to playlist', and
     # clear history. Use the dirty key to figure out if we 
     # warn about clearing history.. 
     
-    menu_provider_name = 'history-tab-context-menu'
     reorderable = False
     
     def __init__(self, playlist, player):
-        NotebookPage.__init__(self)
+        PlaylistPageBase.__init__(self)
         
         self.playlist = playlist
         
-        self.swindow = gtk.ScrolledWindow()
-        self.swindow.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
-        self.pack_start(self.swindow, True, True)
+        self.swindow = Gtk.ScrolledWindow()
+        self.swindow.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        self.pack_start(self.swindow, True, True, 0)
 
         self.view = PlaylistView(self.playlist, player)
         self.swindow.add(self.view)
         
-        hbox = gtk.HButtonBox()
+        hbox = Gtk.ButtonBox()
         
-        button = gtk.Button(stock=gtk.STOCK_CLEAR)
+        button = Gtk.Button(stock=Gtk.STOCK_CLEAR)
         button.connect( 'clicked', self.on_clear_history )
-        hbox.pack_start( button )
+        hbox.pack_start( button , True, True, 0)
         
-        button = gtk.Button(stock=gtk.STOCK_SAVE)
+        button = Gtk.Button(stock=Gtk.STOCK_SAVE)
         button.connect( 'clicked', self.on_save_history )
-        hbox.pack_start( button )
+        hbox.pack_start( button , True, True, 0)
         
-        align = gtk.Alignment( 1.0, 0.0 )
+        align = Gtk.Alignment.new(1, 0, 0, 0)
         align.add( hbox )
         
-        self.pack_start( align, False, False )
+        self.pack_start( align, False, False, 0 )
         
         self.show_all()
     
@@ -209,6 +181,9 @@ class HistoryPlaylistPage( NotebookPage ):
         return _("History")
 
     ## End NotebookPage ##
+    
+    def on_save(self):
+        self.save_history()
     
     def on_clear_history( self, widget ):
         self.playlist._clear()
@@ -223,7 +198,7 @@ class HistoryPlaylistPage( NotebookPage ):
     
         name = 'History %s' % datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         
-        playlists = xlgui.get_controller().panels['playlists']        
+        playlists = xlgui.get_controller().get_panel('playlists')
         playlists.add_new_playlist( self.playlist, name )
 
     
@@ -233,16 +208,8 @@ def __create_history_tab_context_menu():
     items = []
     items.append(smi('save', [], _("Save History"), 'gtk-save',
         lambda w, n, o, c: o.save_history()))
-    items.append(smi('clear', ['save'], _("Clear History"), 'gtk-clear',
+    items.append(smi('clear', ['save'], _("_Clear History"), 'gtk-clear',
         lambda w, n, o, c: o.playlist._clear()))
-    items.append(sep('tab-close-sep', ['clear']))
-    items.append(smi('tab-close', ['tab-close-sep'], None, 'gtk-close',
-        lambda w, n, o, c: o.tab.close()))
-    
-    for item in items:
-        providers.register( 'history-tab-context-menu', item )
-        
-__create_history_tab_context_menu()
         
         
 class HistoryPlaylist( Playlist ):
@@ -251,7 +218,7 @@ class HistoryPlaylist( Playlist ):
         Playlist.__init__( self, _('History') )
         
         # catch the history
-        event.add_callback( self.__on_playback_track_start, 'playback_track_start', player )
+        event.add_ui_callback( self.__on_playback_track_start, 'playback_track_start', player )
         
         if player.is_paused() or player.is_playing():
             self.__on_playback_track_start( 'playback_track_start', player, player.current )
@@ -268,16 +235,13 @@ class HistoryPlaylist( Playlist ):
             Playlist.__delitem__( self, slice(0, max(0, len(self)-(maxlen-1)), None) )
 
         Playlist.__setitem__( self, slice(len(self),len(self),None), [track] )
-        
-    def _clear(self):
+    
+    def clear(self):
         Playlist.__delitem__( self, slice(None, None, None) )
- 
+    
     #
     # Suppress undesirable playlist functions, history playlist is immutable
     #
-    
-    def clear(self):
-        pass
         
     def set_shuffle_mode(self, mode):
         pass

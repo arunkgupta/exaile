@@ -24,9 +24,8 @@
 # do so. If you do not wish to do so, delete this exception statement
 # from your version.
 
-import gio
-import gobject
-import gtk
+from gi.repository import Gio
+from gi.repository import Gtk
 import logging
 import os
 
@@ -36,58 +35,38 @@ from xl import (
     xdg
 )
 from xlgui.widgets import dialogs
+from xlgui.guiutil import GtkTemplate
 
 logger = logging.getLogger(__name__)
 
-class CollectionManagerDialog(object):
+@GtkTemplate('ui', 'collection_manager.ui')
+class CollectionManagerDialog(Gtk.Dialog):
     """
         Allows you to choose which directories are in your library
     """
+
+    __gtype_name__ = 'CollectionManager'
+
+    view, model, remove_button, content_area = GtkTemplate.Child.widgets(4)
+
     def __init__(self, parent, collection):
         """
             Initializes the dialog
         """
+        Gtk.Dialog.__init__(self)
+        self.init_template()
+
         self.parent = parent
         self.collection = collection
-        builder = gtk.Builder()
-        builder.add_from_file(xdg.get_data_path(
-            'ui', 'collection_manager.ui'))
-        self.dialog = builder.get_object('CollectionManager')
-        self.dialog.set_transient_for(self.parent)
-        self.view = builder.get_object('view')
-        self.model = builder.get_object('model')
-        self.remove_button = builder.get_object('remove_button')
+
+        self.set_transient_for(self.parent)
         self.message = dialogs.MessageBar(
-            parent=builder.get_object('content_area'),
-            buttons=gtk.BUTTONS_CLOSE
+            parent=self.content_area,
+            buttons=Gtk.ButtonsType.CLOSE
         )
-
-        builder.connect_signals(self)
-
-        selection = self.view.get_selection()
-        selection.connect('changed', self.on_selection_changed)
 
         for location, library in collection.libraries.iteritems():
             self.model.append([location, library.monitored, library.startup_scan])
-
-    def run(self):
-        """
-            Runs the dialog, waiting for a response before any other gui
-            events occur
-        """
-        return self.dialog.run()
-
-    def hide(self):
-        """
-            Hides the dialog
-        """
-        self.dialog.hide()
-
-    def destroy(self):
-        """
-            Destroys the dialog
-        """
-        self.dialog.destroy()
 
     def get_items(self):
         """
@@ -100,6 +79,7 @@ class CollectionManagerDialog(object):
 
         return items
 
+    @GtkTemplate.Callback
     def on_monitored_cellrenderer_toggled(self, cell, path):
         """
             Enables or disables monitoring
@@ -108,6 +88,7 @@ class CollectionManagerDialog(object):
         cell.set_active(monitored)
         self.model[path][1] = monitored
         
+    @GtkTemplate.Callback
     def on_startup_cellrenderer_toggled(self, cell, path):
         """
             Enables or disables scanning on startup
@@ -117,14 +98,15 @@ class CollectionManagerDialog(object):
             cell.set_active(scan_on_startup)
             self.model[path][2] = scan_on_startup
 
+    @GtkTemplate.Callback
     def on_add_button_clicked(self, widget):
         """
             Adds a path to the list
         """
-        dialog = gtk.FileChooserDialog(_("Add a Directory"),
-            self.parent, gtk.FILE_CHOOSER_ACTION_SELECT_FOLDER,
-            (gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
-            gtk.STOCK_ADD, gtk.RESPONSE_OK))
+        dialog = Gtk.FileChooserDialog(_("Add a Directory"),
+            self.parent, Gtk.FileChooserAction.SELECT_FOLDER,
+            (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_ADD, Gtk.ResponseType.OK))
         dialog.set_current_folder(xdg.get_last_dir())
         dialog.set_local_only(False) # enable gio
         response = dialog.run()
@@ -136,12 +118,12 @@ class CollectionManagerDialog(object):
         uri = dialog.get_uri()
         dialog.hide()
 
-        if response == gtk.RESPONSE_OK:
-            location = gio.File(uri)
+        if response == Gtk.ResponseType.OK:
+            location = Gio.File.new_for_uri(uri)
             removals = []
 
             for row in self.model:
-                library_location = gio.File(row[0])
+                library_location = Gio.File.new_for_uri(row[0])
                 monitored = row[1]
                 scan_on_startup = row[2]
 
@@ -163,6 +145,7 @@ class CollectionManagerDialog(object):
 
         dialog.destroy()
 
+    @GtkTemplate.Callback
     def on_remove_button_clicked(self, widget):
         """
             removes a path from the list
@@ -171,6 +154,7 @@ class CollectionManagerDialog(object):
         model, iter = selection.get_selected()
         model.remove(iter)
         
+    @GtkTemplate.Callback
     def on_rescan_button_clicked(self, widget):
         """
             Triggers rescanning the collection
@@ -179,6 +163,7 @@ class CollectionManagerDialog(object):
         from xlgui import main
         main.mainwindow().controller.on_rescan_collection()
         
+    @GtkTemplate.Callback
     def on_force_rescan_button_clicked(self, widget):
         """
             Triggers a slow rescan of the collection
@@ -186,12 +171,11 @@ class CollectionManagerDialog(object):
         
         from xlgui import main
         main.mainwindow().controller.on_rescan_collection_forced()
-        
     
+    @GtkTemplate.Callback
     def on_selection_changed(self, selection):
         """
             Enables or disables the "Remove" button
         """
         rows_selected = selection.count_selected_rows() > 0
         self.remove_button.set_sensitive(rows_selected)
-

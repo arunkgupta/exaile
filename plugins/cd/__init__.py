@@ -202,7 +202,7 @@ class CDPlaylist(playlist.Playlist):
         for i in range(self.info[1]):
             tr = self[i]
             tr.set_tag_raw('title',
-                    info['TTITLE' + `i`].decode('iso-8859-15', 'replace'))
+                    info['TTITLE' + str(i)].decode('iso-8859-15', 'replace'))
             tr.set_tag_raw('album',
                     title[1].decode('iso-8859-15', 'replace'))
             tr.set_tag_raw('artist',
@@ -233,7 +233,7 @@ class CDDevice(KeyedDevice):
                     os.path.join(os.path.dirname(__file__), "_cdguipanel.py"))
             return _cdguipanel.CDPanel
         except:
-            common.log_exception(log=logger, message="Could not import cd gui panel")
+            logger.exception("Could not import cd gui panel")
             return 'flatplaylist'
 
     panel_type = property(_get_panel_type)

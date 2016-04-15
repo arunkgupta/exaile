@@ -31,7 +31,7 @@ import shelve
 
 from copy import deepcopy
 
-import glib
+from gi.repository import GLib
 
 from xl import common, event
 from xl.nls import gettext as _
@@ -185,10 +185,9 @@ class TrackDB(object):
                 import bsddb3 # ArchLinux disabled bsddb in python2, so we have to use the external module
                 _db = bsddb3.hashopen(location, 'c')
                 pdata = shelve.Shelf(_db, protocol=common.PICKLE_PROTOCOL)
-            if pdata.has_key("_dbversion"):
+            if "_dbversion" in pdata:
                 if int(pdata['_dbversion']) > int(self._dbversion):
-                    raise common.VersionError, \
-                            "DB was created on a newer Exaile version."
+                    raise common.VersionError("DB was created on a newer Exaile version.")
                 elif pdata['_dbversion'] < self._dbversion:
                     logger.info("Upgrading DB format....")
                     import shutil
@@ -201,8 +200,7 @@ class TrackDB(object):
         except common.VersionError:
             raise
         except Exception:
-            logger.error("Failed to open music DB.")
-            common.log_exception(log=logger)
+            logger.exception("Failed to open music DB.")
             return
 
         for attr in self.pickle_attrs:
@@ -224,11 +222,10 @@ class TrackDB(object):
                             
                     setattr(self, attr, data)
                 else:
-                    setattr(self, attr, pdata[attr])
+                    setattr(self, attr, pdata.get(attr, getattr(self, attr)))
             except Exception:
                 # FIXME: Do something about this
-                logger.warn("Exception occurred while loading %s" % location)
-                common.log_exception(log=logger)
+                logger.exception("Exception occurred while loading %s" % location)
 
         pdata.close()
 
@@ -273,11 +270,9 @@ class TrackDB(object):
                 _db = bsddb3.hashopen(location, 'c')
                 pdata = shelve.Shelf(_db, protocol=common.PICKLE_PROTOCOL)
             if pdata.get('_dbversion', self._dbversion) > self._dbversion:
-                raise common.VersionError, \
-                    "DB was created on a newer Exaile."
+                raise common.VersionError("DB was created on a newer Exaile.")
         except Exception:
-            logger.error("Failed to open music DB for writing.")
-            common.log_exception(log=logger)
+            logger.exception("Failed to open music DB for writing.")
             return
 
         for attr in self.pickle_attrs:

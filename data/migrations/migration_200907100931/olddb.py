@@ -34,7 +34,7 @@ except ImportError:
 
 #sqlite.enable_shared_cache(True)
 
-import glib
+from gi.repository import GLib
 
 class DBOperationalError(Exception):
     
@@ -113,7 +113,7 @@ class DBManager(object):
         """
         name = threading.currentThread().getName()
         if name == "MainThread": return
-        if self.pool.has_key(name):
+        if name in self.pool:
             self.pool[name].close()
             del self.pool[name]
             logger.debug("Closed db for thread %s" % name)
@@ -124,7 +124,7 @@ class DBManager(object):
         """
         name = threading.currentThread().getName()
         if name == "MainThread" or self.db_loc == ":memory:": return self.db
-        if not self.pool.has_key(name):
+        if name not in self.pool:
             db = self.__get_db()
             for tup in self.functions:
                 db.create_function(tup[0], tup[1], tup[2])
@@ -158,7 +158,7 @@ class DBManager(object):
         try:
             db = sqlite.connect(self.db_loc, check_same_thread=False)
             db.text_factory = lambda x: unicode(x, 'utf-8', 'ignore')
-        except sqlite.OperationalError, e:
+        except sqlite.OperationalError as e:
             raise DBOperationalError(str(e))
 
         return db
@@ -168,7 +168,7 @@ class DBManager(object):
             Closes the connection
         """
         if self.timer_id:
-            glib.source_remove(self.timer_id)
+            GLib.source_remove(self.timer_id)
 
     def execute(self, query, args=None):
         """
@@ -228,7 +228,7 @@ class DBManager(object):
         if threading.currentThread().getName() == 'MainThread':
             self.db.commit()
         else:
-            glib.idle_add(self.db.commit)
+            GLib.idle_add(self.db.commit)
 
     def read_one(self, table, items, where, args):
         """

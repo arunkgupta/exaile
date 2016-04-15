@@ -33,15 +33,12 @@
 
 from collections import namedtuple
 import logging
-from optparse import OptionParser
-import os
 import sys
-import traceback
 
 import dbus
 import dbus.service
-import gio
-import gobject
+from gi.repository import Gio
+from gi.repository import GObject
 
 # Be VERY careful what you import here! This module gets loaded even if
 # we are just issuing a dbus command to a running instance, so we need
@@ -82,7 +79,7 @@ def check_exit(options, args):
                 # This enables:    find PATH -name *.mp3 | exaile -
                 if args[0] == '-':
                     args = sys.stdin.read().split('\n')
-                args = [ gio.File(arg).get_uri() for arg in args ]
+                args = [ Gio.File.new_for_commandline_arg(arg).get_uri() for arg in args ]
                 iface.Enqueue(args)
 
     if not iface:
@@ -114,9 +111,9 @@ def run_commands(options, iface):
         if getattr(options, command):
             value = iface.GetTrackAttr(attr)
             if value is None:
-                print _('Not playing.')
+                print(_('Not playing.'))
             else:
-                print value
+                print(value)
             comm = True
 
     argument_commands = (
@@ -133,14 +130,14 @@ def run_commands(options, iface):
             if command in ('IncreaseVolume', 'DecreaseVolume'):
                 iface.ChangeVolume(argument if command == 'IncreaseVolume' else -argument)
             else:
-                print getattr(iface, command)(argument)
+                print(getattr(iface, command)(argument))
 
             comm = True
 
     # Special handling for FormatQuery & FormatQueryTags
     format = options.FormatQuery
     if format is not None:
-        print iface.FormatQuery(format, options.FormatQueryTags or 'title,artist,album,__length')
+        print(iface.FormatQuery(format, options.FormatQueryTags or 'title,artist,album,__length'))
         comm = True
 
     run_commands = (
@@ -170,7 +167,7 @@ def run_commands(options, iface):
 
     for command in query_commands:
         if getattr(options, command):
-            print getattr(iface, command)(argument)
+            print(getattr(iface, command)(argument))
             comm = True
 
     to_implement = (

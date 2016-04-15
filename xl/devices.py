@@ -30,7 +30,7 @@ Devices
 contains the DeviceManager and some generic Device classes
 """
 
-from xl import common, event, collection
+from xl import event, collection
 
 
 class DeviceManager(object):
@@ -138,14 +138,14 @@ class Device(object):
             Send tracks to the device
         """
         if not self.transfer:
-            raise TransferNotSupportedError, "Device class does not " \
-                    "support transfer."
+            raise TransferNotSupportedError("Device class does not "
+                    "support transfer.")
         self.transfer.enqueue(tracks)
 
     def start_transfer(self):
         if not self.transfer:
-            raise TransferNotSupportedError, "Device class does not " \
-                    "support transfer."
+            raise TransferNotSupportedError("Device class does not "
+                    "support transfer.")
         self.transfer.transfer()
 
 

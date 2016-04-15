@@ -24,7 +24,7 @@
 # do so. If you do not wish to do so, delete this exception statement
 # from your version.
 
-import gio
+from gi.repository import Gio
 
 def migrate(db, pdata, oldversion, newversion):
     for k in (x for x in pdata.keys() if x.startswith("tracks-")):
@@ -37,15 +37,15 @@ def migrate(db, pdata, oldversion, newversion):
         if not loc or not loc.startswith("file://"):
             continue
         loc = loc[7:]
-        gloc = gio.File(loc)
+        gloc = Gio.File.new_for_uri(loc)
         uri = gloc.get_uri()
         tags['__loc'] = uri
         pdata[k] = (tags, p[1], p[2])
 
-    if pdata.has_key('_serial_libraries'):
+    if '_serial_libraries' in pdata:
         libs = pdata['_serial_libraries']
         for l in libs:
-            l['location'] = gio.File(l['location']).get_uri()
+            l['location'] = Gio.File.new_for_uri(l['location']).get_uri()
         pdata['_serial_libraries'] = libs
 
     pdata['_dbversion'] = newversion

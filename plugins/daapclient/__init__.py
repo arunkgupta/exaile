@@ -15,15 +15,14 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-import traceback
 import os
-import gtk
+from gi.repository import Gtk
 import dbus
 import dbus.exceptions
 import logging
 import time
 import threading
-import gobject
+from gi.repository import GObject
 import xlgui
 import pickle
 from gettext import gettext as _
@@ -42,7 +41,6 @@ from xl import (
 )
 
 logger = logging.getLogger(__name__)
-gobject.threads_init()
 
 _smi = menu.simple_menu_item
 _sep = menu.simple_separator
@@ -92,7 +90,7 @@ parse = functools.partial(zip,
         'txt',
         'flags'])
 
-class DaapAvahiInterface(gobject.GObject): #derived from python-daap/examples
+class DaapAvahiInterface(GObject.GObject): #derived from python-daap/examples
     """
         Handles detection of DAAP shares via Avahi and manages the menu 
         showing the shares.
@@ -100,8 +98,8 @@ class DaapAvahiInterface(gobject.GObject): #derived from python-daap/examples
         Fires a "connect" signal when a menu item is clicked.
     """
     __gsignals__ = {
-                    'connect' : ( gobject.SIGNAL_RUN_LAST, gobject.TYPE_NONE,
-                                    ( gobject.TYPE_PYOBJECT, ) ) }
+                    'connect' : ( GObject.SignalFlags.RUN_LAST, None,
+                                    ( GObject.TYPE_PYOBJECT, ) ) }
 
     def new_service(self, interface, protocol, name, type, domain, flags):
         """
@@ -149,7 +147,7 @@ class DaapAvahiInterface(gobject.GObject): #derived from python-daap/examples
         
         # check if the menu exist and check if it's ipv4 or we are allowing
         # ipv6
-        print 'adding menu',name,key
+        print('adding menu',name,key)
         if self.menu:
                 menu_item = _smi(name, ['sep'], name,
                                 callback=lambda *x: self.clicked(key))
@@ -216,13 +214,13 @@ class DaapAvahiInterface(gobject.GObject): #derived from python-daap/examples
         Fire away.
         '''
         x = self.services[key]
-        gobject.idle_add(self.emit, "connect", (x.name, x.address, x.port, x))
+        GObject.idle_add(self.emit, "connect", (x.name, x.address, x.port, x))
 
     def __init__(self, exaile, _menu):
         """
             Sets up the avahi listener.
         """
-        gobject.GObject.__init__(self)
+        GObject.GObject.__init__(self)
         self.services = {}
         self.menu = _menu
         self.bus = dbus.SystemBus()
@@ -259,13 +257,17 @@ class DaapHistory(common.LimitedCache):
             self.menu.add_item(menu_item)
         
     def load(self):
-        with open(self.location, 'rb') as f:
-            try:
-                d = pickle.load(f)
-                self.update(d)
-            except (IOError, EOFError):
-                # no file
-                pass
+        try:
+            with open(self.location, 'rb') as f:
+                try:
+                    d = pickle.load(f)
+                    self.update(d)
+                except (IOError, EOFError):
+                    # no file
+                    pass
+        except (IOError):
+            # file not present
+            pass
         
     def save(self):
         with open(self.location, 'wb') as f:
@@ -289,7 +291,7 @@ class DaapManager:
         hmenu = menu.Menu(None)
 
         def hmfactory(menu, parent, context):
-            item = gtk.MenuItem(_('History'))
+            item = Gtk.MenuItem.new_with_mnemonic(_('History'))
             item.set_submenu(hmenu)
             sens = settings.get_option('plugin/daapclient/history', True)
             item.set_sensitive(sens)
@@ -351,7 +353,7 @@ class DaapManager:
             _("Enter IP address and port."))
         resp = dialog.run()
 
-        if resp == gtk.RESPONSE_OK:
+        if resp == Gtk.ResponseType.OK:
             loc = dialog.get_value().strip()
             host = loc
             
@@ -443,10 +445,9 @@ class DaapConnection(object):
             self.session = client.login()
             self.connected = True
 #        except DAAPError:
-        except Exception, inst:
-            logger.warning('failed to connect to ({0},{1})'.format(
+        except:
+            logger.exception('failed to connect to ({0},{1})'.format(
                 self.server, self.port))
-            logger.debug(traceback.format_exc())
             
             self.auth = True
             self.connected = False
@@ -528,7 +529,6 @@ class DaapConnection(object):
                     except:
                         if field is 'tracknumber':
                             temp.set_tag_raw('tracknumber', [0], notify_changed=False)
-                        logger.debug(traceback.format_exc())
 
 
                 #TODO: convert year (asyr) here as well, what's the formula?
@@ -551,8 +551,8 @@ class DaapConnection(object):
                 try:
                     t.save(filename)
                 except CannotSendRequest:
-                    dialog = gtk.MessageDialog(APP.window,
-                        gtk.DIALOG_MODAL, gtk.MESSAGE_INFO, gtk.BUTTONS_OK,
+                    dialog = Gtk.MessageDialog(APP.window,
+                        Gtk.DialogFlags.MODAL, Gtk.MessageType.INFO, Gtk.ButtonsType.OK,
                         _("""This server does not support multiple connections.
 You must stop playback before downloading songs."""))
 
@@ -570,9 +570,11 @@ class DaapLibrary(collection.Library):
         self.daap_share = daap_share
         #self.collection = col
 
-    def rescan(self, notify_interval=None):
+    def rescan(self, notify_interval=None, force_update=False):
         '''
-            Called when a library needs to refresh it's track list.
+            Called when a library needs to refresh its track list.
+
+            The force_update parameter is not applicable and is ignored.
         '''
         if self.collection is None:
             return True
@@ -619,7 +621,7 @@ class NetworkPanel(CollectionPanel):
     """
     def __init__(self, parent, library, mgr):
         """
-            Expects a parent gtk.Window, and a daap connection.
+            Expects a parent Gtk.Window, and a daap connection.
         """
 
         self.name = library.daap_share.name
@@ -658,7 +660,7 @@ class NetworkPanel(CollectionPanel):
         # Since we don't use a ProgressManager/Thingy, we have to call these w/out
         #  a ScanThread
         self.net_collection.rescan_libraries()
-        gobject.idle_add(self._refresh_tags_in_tree)
+        GObject.idle_add(self._refresh_tags_in_tree)
 
 
     def save_selected(self, widget=None, event=None):
@@ -666,16 +668,16 @@ class NetworkPanel(CollectionPanel):
             Save the selected tracks to disk.
         """
         items = self.get_selected_items()
-        dialog = gtk.FileChooserDialog(_("Select a Location for Saving"),
-            APP.window, gtk.FILE_CHOOSER_ACTION_SELECT_FOLDER,
-            (gtk.STOCK_OPEN, gtk.RESPONSE_OK,
-             gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL))
+        dialog = Gtk.FileChooserDialog(_("Select a Location for Saving"),
+            APP.window, Gtk.FileChooserAction.SELECT_FOLDER,
+            (Gtk.STOCK_OPEN, Gtk.ResponseType.OK,
+             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL))
         dialog.set_current_folder(APP.get_last_dir())
         dialog.set_select_multiple(False)
         result = dialog.run()
         dialog.hide()
 
-        if result == gtk.RESPONSE_OK:
+        if result == Gtk.ResponseType.OK:
             folder = dialog.get_current_folder()
             self.save_items(items, folder)
 
@@ -701,7 +703,7 @@ def enable(exaile):
         __enb(None, exaile, None)
 
 def __enb(eventname, exaile, wat):
-    gobject.idle_add(_enable, exaile)
+    GObject.idle_add(_enable, exaile)
 
 def _enable(exaile):
     global MANAGER
@@ -722,7 +724,7 @@ def _enable(exaile):
         except RuntimeError: # no dbus?
             avahi_interface = None
             logger.warning('avahi interface could not be initialized (no dbus?)')
-        except dbus.exceptions.DBusException, s:
+        except dbus.exceptions.DBusException as s:
             avahi_interface = None
             logger.error('Got DBUS error: %s' % s)
             logger.error('is avahi-daemon running?')

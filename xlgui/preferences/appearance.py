@@ -24,12 +24,12 @@
 # do so. If you do not wish to do so, delete this exception statement
 # from your version.
 
-import glib
-import gtk
+from gi.repository import Gtk
 
-from xl import common, xdg
+from xl import xdg
 from xl.nls import gettext as _
 from xlgui.preferences import widgets
+from xlgui import tray
 
 name = _('Appearance')
 icon = 'preferences-desktop-theme'
@@ -52,7 +52,7 @@ class ShowTabBarPreference(widgets.CheckPreference):
     name = 'gui/show_tabbar'
     
 def _get_system_default_font():
-    return gtk.widget_get_default_style().font_desc.to_string()
+    return Gtk.Widget.get_default_style().font_desc.to_string()
 
 class PlaylistFontPreference(widgets.FontButtonPreference):
     default = _get_system_default_font()
@@ -77,30 +77,32 @@ class TransparencyPreferfence(widgets.ScalePreference, widgets.CheckConditional)
         widgets.ScalePreference.__init__(self, preferences, widget)
         widgets.CheckConditional.__init__(self)
 
-    def apply(self, value=None):
-        return_value = widgets.ScalePreference.apply(self, value)
-        glib.idle_add(self.preferences.parent.queue_draw)
-
-        return return_value
-
 class TrackCountsPreference(widgets.CheckPreference):
     default = True
     name = 'gui/display_track_counts'
 
     def apply(self, value=None):
         return_value = widgets.CheckPreference.apply(self, value)
-        self._reload_tree()
-
-        return return_value
-
-    @common.threaded
-    def _reload_tree(self):
+        
         import xlgui
         xlgui.get_controller().get_panel('collection').load_tree()
 
-class UseTrayPreference(widgets.CheckPreference):
+        return return_value
+        
+
+class UseTrayPreference(widgets.CheckPreference, widgets.Conditional):
     default = False
     name = 'gui/use_tray'
+
+    def __init__(self, preferences, widget):
+        widgets.CheckPreference.__init__(self, preferences, widget)
+        widgets.Conditional.__init__(self)
+        if not tray.is_supported():
+            self.widget.set_tooltip_text(_("Tray icons are not supported on your platform"))
+    
+    def on_check_condition(self):
+        return tray.is_supported()
+
 
 class MinimizeToTrayPreference(widgets.CheckPreference, widgets.CheckConditional):
     default = False
